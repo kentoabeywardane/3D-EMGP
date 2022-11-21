@@ -174,7 +174,9 @@ class EquivariantDenoisePred(torch.nn.Module):
 
 
         if self.pred_mode =='energy':
-            grad_outputs: List[Optional[torch.Tensor]] = [torch.ones_like(energy)]
+            # Kento edit to fix Pylance
+            # grad_outputs: List[Optional[torch.Tensor]] = [torch.ones_like(energy)]
+            grad_outputs = [torch.ones_like(energy)]
             dy = grad(
                     [energy],
                     [input_pos],

@@ -2,6 +2,7 @@ import torch
 from torch import nn, optim
 import argparse
 import sys
+from time import time
 sys.path.append('.')
 import os
 from mgp import layers
@@ -13,7 +14,7 @@ import numpy as np
 import pickle as pkl
 from torch_geometric.utils import to_dense_adj, dense_to_sparse
 from torch_sparse import coalesce
-from data.md17 import MD17, get_mean_std, get_dataloaders
+from data.md17 import MD17, get_mean_std, get_dataloaders, MD22
 
 
 parser = argparse.ArgumentParser(description='MD17 Example')
@@ -25,6 +26,12 @@ parser.add_argument('--restore_path', type=str, default='', metavar='N',
                     help='Restore path.')
 parser.add_argument('--model_name', type=str, default='', metavar='N',
                     help='Model name.')
+parser.add_argument('--dataset', type=str, default='MD17', metavar='N',
+                    help='MD dataset ("MD17" or "MD22").')
+parser.add_argument('--num_train',type=int, default=9500, metavar='N',
+                    help='Number of training data points')
+parser.add_argument('--batch_size',type=int, default=28, metavar='N',
+                    help='Batch size')
 args = parser.parse_args()
 
 device = torch.device("cuda")
@@ -44,6 +51,13 @@ config.data.base_path = os.path.join(config.data.base_path, config.data.molecule
 
 if args.model_name != '':
     config.model.name = args.model_name
+
+if args.dataset != '':
+    config.dataset = args.dataset
+
+if args.batch_size != 28:
+    config.train.batch_size = args.batch_size
+    config.test.test_batch_size = args.batch_size
 
 os.makedirs(config.train.save_path + "/" + config.model.name, exist_ok=True)
 
@@ -126,7 +140,12 @@ def gen_fully_connected_with_hop(pos):
     edge_index, edge_type = dense_to_sparse(type_new)
     return edge_index, edge_type - 1
 
-dataset = MD17(config.data.base_path, dataset_arg = config.data.molecule)
+if config.dataset == 'MD17':
+    dataset = MD17(config.data.base_path, dataset_arg = config.data.molecule)
+elif config.dataset == 'MD22':
+    dataset = MD22(config.data.base_path, dataset_arg = config.data.molecule)
+else:
+    NameError(f'{config.dataset} is not a valid dataset name for MD force/energy prediction. Must choose ("MD17" or "MD22")')
 
 # Preprocess the 2D graph features for the first frame, the 2D topological structure does not change in one trajectory.
 
@@ -221,6 +240,7 @@ if __name__ == "__main__":
     all_train_loss, all_val_loss, all_test_loss = [], [], []
 
     for epoch in range(0, config.train.epochs):
+        start_time = time()
         train_loss, train_energy, train_force = train(epoch, dataloaders['train'], config, partition='train')
         all_train_loss.append(train_loss)
         if epoch % config.test.test_interval == 0:
@@ -237,15 +257,16 @@ if __name__ == "__main__":
                     "scheduler": lr_scheduler.state_dict(),
                     "epoch": epoch
                 }
-                torch.save(state, config.train.save_path + "/" + config.model.name + "/checkpoint_best.pth")
+                torch.save(state, config.train.save_path + "/" + config.model.name + "/" + config.data.molecule + "/checkpoint_best.pth")
             print("Val loss: %.4f \t epoch %d" % (val_loss, epoch))
             print("Best: val loss: %.4f \t epoch %d"
                   % (res['best_val'], res['best_epoch']))
+            print(f"Epoch Time: {time() - start_time}")
             all_val_loss.append(val_loss)
-        path = config.train.save_path + "/" + config.model.name
+        path = config.train.save_path + "/" + config.model.name + "/" + config.data.molecule
         loss_file = path + '/loss.pkl'
 
-    best_state = torch.load(config.train.save_path + "/" + config.model.name + "/checkpoint_best.pth", map_location=device)
+    best_state = torch.load(config.train.save_path + "/" + config.model.name + "/" + config.data.molecule + "/checkpoint_best.pth", map_location=device)
     model.load_state_dict(best_state['model'])
 
     test_loss, test_energy, test_force = train(epoch, dataloaders['test'], config, partition='test')

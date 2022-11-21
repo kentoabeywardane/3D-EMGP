@@ -125,7 +125,13 @@ def load_confs_from_filelist(base_path, file_list, conf_per_mol, worker_id):
 def idx2list(lis, idx):
     return [lis[_] for _ in idx]
 
-def gen_train_val(base_path, datasets, conf_per_mol=10, val_num = 200, workers = 1, seed=None, test_mask=None):
+
+#### Kento
+def gen_test(base_path, datasets, conf_per_mol=10, workers = 1, seed=None, test_mask=None):
+    """
+    Created by Kento
+    Generate Test splits for GEOM-DRUGS
+    """
     # Kento: changed default workers=1; issues with CS server when workers>1
     # set random seed
     if seed is None:
@@ -147,8 +153,62 @@ def gen_train_val(base_path, datasets, conf_per_mol=10, val_num = 200, workers =
             summ = json.load(f)
 
         # filter valid pickle path
+        for smiles in test_mask:
+            meta_mol = summ[smiles]
+            u_conf = meta_mol.get('uniqueconfs')
+            if u_conf is None:
+                continue
+            pickle_path = meta_mol.get('pickle_path')
+            if pickle_path is None:
+                continue
+            if u_conf < 1:
+                continue
+            num_mols += 1
+            num_confs += conf_per_mol
+            smiles_list.append(smiles)
+            pickle_path_list.append(pickle_path)
+    print('pre-filter (test): find %d molecules with %d confs' % (num_mols, num_confs))
+
+    test_indexes = list(range(len(pickle_path_list)))
+    random.shuffle(test_indexes)
+
+    if workers == 1:
+        print('start processing test data')
+        test_data, test_bad = load_confs_from_filelist(base_path, idx2list(pickle_path_list, test_indexes), conf_per_mol, 0)
+
+    print('test size: %d molecules with %d confs, %d bad cased filtered.' % (len(test_indexes) - test_bad, len(test_data), test_bad))
+
+    return test_data
+####
+
+def gen_train_val(base_path, datasets, conf_per_mol=10, val_num = 200, workers = 1, seed=None, test_mask=None, train_smiles=None):
+    # Kento: changed default workers=1; issues with CS server when workers>1
+    # set random seed
+    if seed is None:
+        seed = 2021
+    np.random.seed(seed)
+    random.seed(seed)
+    
+    test_mask = [] # or test_smiles # edit by Kento because faster to search through train_smiles
+    train_smiles = train_smiles or []
+
+    smiles_list = []
+    pickle_path_list = []
+    num_mols = 0    
+    num_confs = 0   
+
+    # read summary file
+    for dataset_name in datasets:
+        summary_path = os.path.join(base_path, 'summary_%s.json' % dataset_name)
+        with open(summary_path, 'r') as f:
+            summ = json.load(f)
+
+        # filter valid pickle path
     
         for smiles, meta_mol in summ.items():
+            if smiles not in train_smiles:
+                # added by Kento --> can be faster to search through smaller list
+                continue
             u_conf = meta_mol.get('uniqueconfs')
             if u_conf is None:
                 continue
@@ -164,7 +224,7 @@ def gen_train_val(base_path, datasets, conf_per_mol=10, val_num = 200, workers =
             smiles_list.append(smiles)
             pickle_path_list.append(pickle_path)
 
-    print('pre-filter: find %d molecules with %d confs' % (num_mols, num_confs))
+    print('pre-filter (train/val): find %d molecules with %d confs' % (num_mols, num_confs))
 
     split_indexes = list(range(len(pickle_path_list)))
     random.shuffle(split_indexes)
@@ -176,54 +236,58 @@ def gen_train_val(base_path, datasets, conf_per_mol=10, val_num = 200, workers =
         val_data, val_bad = load_confs_from_filelist(base_path, idx2list(pickle_path_list, val), conf_per_mol, 0)
         print('start processing train data')
         train_data, train_bad = load_confs_from_filelist(base_path, idx2list(pickle_path_list, train), conf_per_mol, 0)
-    else:
-        print('start processing train data')
-        val_p = Pool(processes=workers)
-        val_f_per_w = int(np.ceil(len(val) / workers))
-        val_wks = []
-        for i in range(workers):
-            tar_idx = val[i * val_f_per_w : (i+1) * val_f_per_w]
-            wk = val_p.apply_async(
-                load_confs_from_filelist, (base_path, idx2list(pickle_path_list, tar_idx), conf_per_mol, i)
-            )
-            val_wks.append(wk)
-        
-        val_p.close()
-        val_p.join()
-        val_data = []
-        val_bad = 0
-        for wk in val_wks:
-            _val_data, _val_bad = wk.get()
-            val_data.extend(_val_data)
-            val_bad += _val_bad
 
-        print('start processing train data')
-        train_p = Pool(processes=workers)
-        train_f_per_w = int(np.ceil(len(train) / workers))
-        train_wks = []
-        for i in range(workers):
-            tar_idx = train[i * train_f_per_w : (i+1) * train_f_per_w]
-            wk = train_p.apply_async(
-                load_confs_from_filelist, (base_path, idx2list(pickle_path_list, tar_idx), conf_per_mol, i)
-            )
-            train_wks.append(wk)
+    # commented out by Kento --> problems with CS server
+    # else:
+    #     print('start processing train data')
+    #     val_p = Pool(processes=workers)
+    #     val_f_per_w = int(np.ceil(len(val) / workers))
+    #     val_wks = []
+    #     for i in range(workers):
+    #         tar_idx = val[i * val_f_per_w : (i+1) * val_f_per_w]
+    #         wk = val_p.apply_async(
+    #             load_confs_from_filelist, (base_path, idx2list(pickle_path_list, tar_idx), conf_per_mol, i)
+    #         )
+    #         val_wks.append(wk)
         
-        train_p.close()
-        train_p.join()  
-        train_data = []
-        train_bad = 0
-        for wk in train_wks:
-            _train_data, _train_bad = wk.get()
-            train_data.extend(_train_data)
-            train_bad += _train_bad  
+    #     val_p.close()
+    #     val_p.join()
+    #     val_data = []
+    #     val_bad = 0
+    #     for wk in val_wks:
+    #         _val_data, _val_bad = wk.get()
+    #         val_data.extend(_val_data)
+    #         val_bad += _val_bad
 
-    print('train size: %d molecules with %d confs, %d bad cased filted.' % (len(train) - train_bad, len(train_data), train_bad))
-    print('val size: %d molecules with %d confs, %d bad cased filted.' % (len(val) - val_bad, len(val_data), val_bad))
+    #     print('start processing train data')
+    #     train_p = Pool(processes=workers)
+    #     train_f_per_w = int(np.ceil(len(train) / workers))
+    #     train_wks = []
+    #     for i in range(workers):
+    #         tar_idx = train[i * train_f_per_w : (i+1) * train_f_per_w]
+    #         wk = train_p.apply_async(
+    #             load_confs_from_filelist, (base_path, idx2list(pickle_path_list, tar_idx), conf_per_mol, i)
+    #         )
+    #         train_wks.append(wk)
+        
+    #     train_p.close()
+    #     train_p.join()  
+    #     train_data = []
+    #     train_bad = 0
+    #     for wk in train_wks:
+    #         _train_data, _train_bad = wk.get()
+    #         train_data.extend(_train_data)
+    #         train_bad += _train_bad  
+
+    print('train size: %d molecules with %d confs, %d bad cased filtered.' % (len(train) - train_bad, len(train_data), train_bad))
+    print('val size: %d molecules with %d confs, %d bad cased filtered.' % (len(val) - val_bad, len(val_data), val_bad))
 
     return train_data, val_data
 
-def gen_GEOM_blocks(base_path, datasets, output_dir, conf_per_mol=10, val_num = 200, train_block_size = 100000, workers = 10, seed=None, test_mask=None):
-    train_data, val_data = gen_train_val(base_path, datasets, conf_per_mol, val_num, workers, seed, test_mask)
+def gen_GEOM_blocks(base_path, datasets, output_dir, conf_per_mol=10, val_num = 200, train_block_size = 100000, workers = 1, seed=None, test_mask=None, train_smiles=None):
+
+    # train and val data blocks
+    train_data, val_data = gen_train_val(base_path, datasets, conf_per_mol, val_num, workers, seed, test_mask, train_smiles)
     if seed is None:
         seed = 2021
     np.random.seed(seed)
@@ -245,12 +309,30 @@ def gen_GEOM_blocks(base_path, datasets, output_dir, conf_per_mol=10, val_num = 
     with open(os.path.join(base_path,'..',output_dir,'val_block.pkl'), 'wb') as f:
         pickle.dump(val_data, f)
 
+    # test data blocks
+    #### added by kento
+    del train_data, val_data
+    test_data = gen_test(base_path, datasets, conf_per_mol, workers, seed, test_mask=test_mask)
+
+    test_block_num = len(test_data) // train_block_size + (len(test_data) % train_block_size != 0)
+    test_idx = np.arange(len(test_data))
+    np.random.shuffle(test_idx)
+    os.makedirs(os.path.join(base_path,'..',output_dir), exist_ok=True)
+    for i in range(test_block_num):
+        block_idx = test_idx[i * train_block_size : (i + 1) * train_block_size]
+        test_block = idx2list(test_data, block_idx)
+        with open(os.path.join(base_path,'..',output_dir,'test_block_%d.pkl'%i), 'wb') as f:
+            pickle.dump(test_block, f)
+    ####
+
     with open(os.path.join(base_path,'..',output_dir,'summary.json'), 'w') as f:
         json.dump({
             'train block num' : block_num,
             'train block size': train_block_size,
             'val block num' : 1,
-            'val block size': val_size
+            'val block size': val_size,
+            'test block num' : test_block_num, # added by Kento
+            'test block size' : train_block_size
         }, f)
 
 
@@ -362,9 +444,11 @@ if __name__ == '__main__':
     parser.add_argument('--output', type=str, help='output dir', required=True)
     parser.add_argument('--val_num', type=int, help='maximum moleculars for validation', default = 1000)
     parser.add_argument('--conf_num', type=int, help='maximum sampled conformations per molecular', default = 10)
-    parser.add_argument('--num_workers', type=int, help='workers number', default = 10)
+    parser.add_argument('--num_workers', type=int, help='workers number', default = 1)
     parser.add_argument('--block_size', type=int, help='conformations per block', default = 100000)
     parser.add_argument('--test_smiles', type=str, help='txt files of smiles for test, split by \\n', default = '')
+    # added by Kento --> faster to search through smaller list of train values
+    parser.add_argument('--train_smiles', type=str, help='txt files of smiles for train/val, split by \\n', default = '')
     args = parser.parse_args()
     if len(args.test_smiles) > 0:
         with open(args.test_smiles, 'r') as f:
@@ -372,4 +456,13 @@ if __name__ == '__main__':
         test_mask = [_.strip() for _ in l]
     else:
         test_mask = None
-    gen_GEOM_blocks(args.base_path, args.datasets, args.output, val_num=args.val_num, train_block_size=args.block_size, workers = args.num_workers, conf_per_mol = args.conf_num, test_mask = test_mask)
+    if len(args.train_smiles) > 0:
+        with open(args.train_smiles, 'r') as f:
+            l = f.readlines()
+        train_smiles = [_.strip() for _ in l]
+    else:
+        test_mask = None
+    gen_GEOM_blocks(args.base_path, args.datasets, args.output, val_num=args.val_num, train_block_size=args.block_size, workers=args.num_workers, conf_per_mol=args.conf_num, test_mask=test_mask, train_smiles=train_smiles)
+
+# run with 
+# python ./data/geom_drugs.py --base_path /data/people/kabeywar/datasets/GEOM/rdkit_folder/ --datasets drugs --output drugs/blocks --val_num 500 --conf_num 10 --block_size 10000 --test_smiles ./data/geom_drugs_large_sampled.txt --train_smiles ./data/geom_drugs_small.txt --num_workers 1

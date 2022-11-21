@@ -443,7 +443,9 @@ class TorchMD_Net(nn.Module):
 
         # compute gradients with respect to coordinates
         if self.derivative:
-            grad_outputs: List[Optional[torch.Tensor]] = [torch.ones_like(out)]
+            # Kento edit to fix Pylance error
+            # used to be "grad_outputs: List[Optional[torch.Tensor]] = [torch.ones_like(out)]"
+            grad_outputs = [torch.ones_like(out)]
             dy = grad(
                 [out],
                 [pos],

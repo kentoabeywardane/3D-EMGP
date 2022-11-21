@@ -3,7 +3,7 @@ import torch
 
 from torch_scatter.composite import scatter_softmax
 from torch.autograd import grad
-from torch_scatter import scatter_add
+from torch_scatter import scatter_add, scatter
 
 from torch.nn import LayerNorm
 import math
@@ -169,21 +169,49 @@ class EGNN_finetune_last(EGNN_last):
         self.node_dec = nn.Sequential(nn.Linear(self.hidden_nf, self.hidden_nf),
                                       act_fn,
                                       nn.Linear(self.hidden_nf, self.hidden_nf))
-
         self.graph_dec = nn.Sequential(nn.Linear(self.hidden_nf, self.hidden_nf),
                                        act_fn,
                                        nn.Linear(self.hidden_nf, 1))
 
     def forward(self, h, x, edges, edge_attr, n_nodes, edge_mask=None, node_mask=None, adapter=None):
         x_ = x.clone()
-        h, x = EGNN_last.forward(self, h, x, edges, edge_attr, edge_mask=edge_mask)
-        h = self.node_dec(h)
+        h, x = EGNN_last.forward(self, h, x, edges, edge_attr, edge_mask=edge_mask) # [num nodes, hidden_nf]
+        h = self.node_dec(h) # [num nodes, hidden_nf]
         if node_mask is not None:
             h = h * node_mask
-        h = h.view(-1, n_nodes, self.hidden_nf)
-        h = torch.sum(h, dim=1)
-        pred = self.graph_dec(h)
-        return pred.squeeze(1)
+        ###
+        h = h.view(-1, n_nodes, self.hidden_nf) # [1, num nodes, hidden_nf]
+        
+        ### What if I used torch_scatter.scatter.scatter_sum instead? this could get me [batch size x 1]
+        h = torch.sum(h, dim=1) # [1, hidden_nf]
+
+        pred = self.graph_dec(h) # [1,1] 
+
+        return pred.squeeze(1) # squeeze dim=1
+
+### Kento added the scatter add function instead of torch.sum --> get's energy value for each molecule 
+class EGNN_finetune_last_drugs(EGNN_last):
+    def __init__(self, in_node_nf, hidden_nf, in_edge_nf=0, act_fn=nn.SiLU(), n_layers=4, residual=True, attention=False, normalize=False, tanh=False, use_layer_norm=False):
+        EGNN_last.__init__(self, in_node_nf, hidden_nf, in_edge_nf, act_fn, n_layers, residual, attention, normalize, tanh, use_layer_norm)
+        self.node_dec = nn.Sequential(nn.Linear(self.hidden_nf, self.hidden_nf),
+                                      act_fn,
+                                      nn.Linear(self.hidden_nf, self.hidden_nf))
+        self.graph_dec = nn.Sequential(nn.Linear(self.hidden_nf, self.hidden_nf),
+                                       act_fn,
+                                       nn.Linear(self.hidden_nf, 1))
+
+    def forward(self, h, x, edges, edge_attr, n_nodes, batch, edge_mask=None, node_mask=None, adapter=None):
+        x_ = x.clone()
+        h, x = EGNN_last.forward(self, h, x, edges, edge_attr, edge_mask=edge_mask) # [num nodes, hidden_nf]
+        h = self.node_dec(h) # [num nodes, hidden_nf]
+        if node_mask is not None:
+            h = h * node_mask
+        
+        h = scatter(h, batch, dim=0, reduce='sum') # [batch_size,hidden_nf]
+
+        pred = self.graph_dec(h) # [batch_size,1] 
+        
+        return pred.squeeze(1) # squeeze dim=1
 
 class EGNN_md_last(EGNN_last):
     def __init__(self, in_node_nf, hidden_nf, in_edge_nf=0, act_fn=nn.SiLU(), n_layers=4, residual=True, attention=False, normalize=False, tanh=False, mean=None, std=None):
@@ -221,7 +249,8 @@ class EGNN_md_last(EGNN_last):
         if md_type == 'predict':
             dy = x__ - x_
         elif md_type == 'gradient':
-            grad_outputs: List[Optional[torch.Tensor]] = [torch.ones_like(pred)]
+            # grad_outputs: List[Optional[torch.Tensor]] 
+            grad_outputs = [torch.ones_like(pred)]
             dy = - grad(
                 [pred],
                 [x_],

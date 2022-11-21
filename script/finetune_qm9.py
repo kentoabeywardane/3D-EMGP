@@ -187,11 +187,15 @@ def train(epoch, loader, config, partition='train'):
         else:
             edges, edge_types = gen_fully_connected_with_hop(atom_positions, atom_mask)
             edge_attr = nn.functional.one_hot(edge_types, 4)
-        label = data[config.train.property].to(device, dtype)
+        label = data[config.train.property].to(device, dtype) # label --> training target
         atom_positions = atom_positions.view(batch_size * n_nodes, -1)
         atom_mask = atom_mask.view(batch_size * n_nodes, -1)
+        # Kento comments
+        # May want to try fine-tuning multiple properties at the same time
+        # Would need to add an argument to EGNN_last_finetune that takes in config.train.property as number of output logits
         pred = model(h=nodes, x=atom_positions, edges=edges, edge_attr=edge_attr, node_mask=atom_mask, n_nodes=n_nodes, adapter=config.train.property)
         if partition == 'train':
+            # in that case that there must be a loss summation and meann, mad must be computed for each property
             loss = loss_l1(pred, (label - meann) / mad)
             loss.backward()
             optimizer.step()
