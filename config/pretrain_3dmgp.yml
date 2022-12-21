@@ -7,7 +7,7 @@ train:
   eval: true
   num_workers: 0  
   save: true
-  save_path: checkpoints/pretrain
+  save_path: ./checkpoints/pretrain
   log_interval: 100
   clip: 5.0
   mask_ratio: 0.15
@@ -26,7 +26,7 @@ train:
 
 
 data:
-  block_dir: datasets/GEOM/blocks
+  block_dir: /data/people/kabeywar/datasets/GEOM/qm9/blocks
 
 model:
   name: 3dmgp

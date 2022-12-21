@@ -3,6 +3,7 @@ from torch_geometric.data import InMemoryDataset, download_url, Data
 import numpy as np
 from torch.utils.data import Subset
 from torch_geometric.loader import DataLoader
+from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
 import pickle as pkl
 import os
@@ -257,3 +258,68 @@ def get_mean_std(dataloaders):
     val_loader = dataloaders['val']
     ys = torch.cat([batch.y.squeeze() for batch in val_loader])
     return ys.mean(), ys.std()
+
+### Kento
+def get_distributed_dataloaders(dataset, 
+                                num_train, 
+                                num_val, 
+                                batch_size, 
+                                test_batch_size, 
+                                num_workers, 
+                                idx_dir,
+                                world_size,
+                                rank):
+
+    idx_file = os.path.join(idx_dir,'idx.pkl')
+    if os.path.exists(idx_file):
+        with open(idx_file,'rb') as f:
+            idx = pkl.load(f)
+    else:
+        size = len(dataset)
+        idx = np.arange(size)
+        np.random.shuffle(idx)
+        with open(idx_file,'wb') as f:
+            pkl.dump(idx, f)
+    idx = torch.from_numpy(idx)
+    train_idx = idx[:num_train]
+    val_idx = idx[num_train:num_train + num_val]
+    test_idx = idx[num_train + num_val:]
+    train_set = dataset[train_idx]
+    val_set = dataset[val_idx]
+    test_set = dataset[test_idx]
+
+    train_sampler = DistributedSampler(train_set, num_replicas=world_size,
+                                    rank=rank)
+    train_loader = DataLoader(
+            dataset=train_set,
+            batch_size=batch_size,
+            shuffle=True,
+            sampler=train_sampler, 
+            num_workers=num_workers
+        )
+
+    val_sampler = DistributedSampler(val_set, num_replicas=world_size,
+                                    rank=rank)
+    val_loader = DataLoader(
+            dataset=val_set,
+            batch_size=batch_size,
+            shuffle=False,
+            sampler=val_sampler,
+            num_workers=num_workers
+        )
+
+    test_sampler = DistributedSampler(test_set, num_replicas=world_size,
+                                    rank=rank)
+    test_loader = DataLoader(
+            dataset=test_set,
+            batch_size=test_batch_size,
+            shuffle=False,
+            sampler=test_sampler,
+            num_workers=num_workers
+        )
+    return {
+        'train':train_loader,
+        'val':val_loader,
+        'test':test_loader,
+        'idx':idx
+    }

@@ -35,7 +35,6 @@ def train(rank, config, world_size, verbose=1):
     if rank != 0:
         verbose = 0
 
-
     train_start = time()
 
     if config.model.no_edge_types:

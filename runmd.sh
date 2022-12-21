@@ -6,9 +6,9 @@ export SCRIPT=script/finetune_md17.py
 export RESTORE=checkpoints/checkpoint-3dmgp
 export DATASET=MD22
 
-MOLECULE=(docosahexaenoic_acid stachyose at_at at_at_cg_cg)
-NUM_TRAIN=(9500 9500 7500 5000)
-BATCH_SZ=(24 24 16 8)
+MOLECULE=(docosahexaenoic_acid stachyose at_at_cg_cg)
+NUM_TRAIN=(9500 9500 5000)
+BATCH_SZ=(24 24 4)
 for ((i=0; i<${#MOLECULE[@]}; i++))
 do 
     echo "${MOLECULE[$i]} ${NUM_TRAIN[$i]} ${BATCH_SZ[$i]}" 

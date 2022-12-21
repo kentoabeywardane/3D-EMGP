@@ -146,7 +146,7 @@ def test(rank, config, world_size, chkpt:int, verbose=1):
             num_nodes = batch.num_nodes
 
             # predict
-            nrg_pred = model(batch.node_feature, pos, batch.edge_index, edge_attr, num_nodes, node2graph)
+            nrg_pred = model(batch.node_feature, pos, batch.edge_index, edge_attr, node2graph)
             label = batch[config.test.property].to(device, dtype) # label --> test target
 
             all_smiles.extend(batch['smiles']) # maybe save to file as we go?

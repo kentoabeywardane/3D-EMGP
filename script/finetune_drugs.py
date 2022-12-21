@@ -178,9 +178,8 @@ def train(rank, config, world_size, verbose=1):
             # edge2graph = node2graph[batch.edge_index[0]]
             pos = batch.pos
             edge_attr = gen_edge_onehot(config, batch.edge_type)
-            num_nodes = batch.num_nodes
 
-            nrg_pred = model(batch.node_feature, pos, batch.edge_index, edge_attr, num_nodes, node2graph)
+            nrg_pred = model(batch.node_feature, pos, batch.edge_index, edge_attr, node2graph)
 
             # design loss function
             label = batch[config.train.property].to(device, dtype) # label --> training target
@@ -337,7 +336,7 @@ def main():
     if world_size > 1:
         # os.environ['MASTER_ADDR'] = 'localhost'
         # os.environ["MASTER_PORT"] = "29500"
-        dist.init_process_group('nccl', rank=args.local_rank, world_size=world_size)
+        dist.init_process_group('nccl', rank=list(range(world_size)), world_size=world_size)
     # print(f'Was dist initialized: {torch.distributed.is_initialized()}')
 
     # Finetune!

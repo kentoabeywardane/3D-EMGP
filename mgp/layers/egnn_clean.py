@@ -103,6 +103,7 @@ class E_GCL(nn.Module):
         h0 = h
         if self.use_layer_norm:
             h = self.node_ln(h)
+        # print(h[row].size(), h[col].size(), radial.size(), edge_attr.size())
         edge_feat = self.edge_model(h[row], h[col], radial, edge_attr)
         if self.use_layer_norm:
             edge_feat = self.edge_ln(edge_feat)
@@ -200,7 +201,7 @@ class EGNN_finetune_last_drugs(EGNN_last):
                                        act_fn,
                                        nn.Linear(self.hidden_nf, 1))
 
-    def forward(self, h, x, edges, edge_attr, n_nodes, batch, edge_mask=None, node_mask=None, adapter=None):
+    def forward(self, h, x, edges, edge_attr, batch, edge_mask=None, node_mask=None, adapter=None):
         x_ = x.clone()
         h, x = EGNN_last.forward(self, h, x, edges, edge_attr, edge_mask=edge_mask) # [num nodes, hidden_nf]
         h = self.node_dec(h) # [num nodes, hidden_nf]

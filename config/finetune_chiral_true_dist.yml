@@ -1,0 +1,50 @@
+train:
+  batch_size: 96
+  seed: 2021
+  epochs: 1000
+  num_workers: 1
+  restore_path: ./checkpoints/checkpoint-3dmgp
+  save: True
+  save_path: ./checkpoints/finetune/
+  log_interval: 100
+  lr: 0.0005
+  property: top_score
+  weight_decay: 1e-16
+  min_lr: 0.000001
+  save_train_val: ./output/chiral/training_true_dist3
+  save_train_file: finetune_train.npy
+  save_val_file: finetune_val.npy
+  abs_penalty: 1
+  rel_penalty: 0
+  
+test:
+  test_interval: 1
+  restore_path: ./checkpoints/finetune/chiral_finetune_true_dist3
+  checkpoints: [0, 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 990]
+  log_interval: 20
+  num_workers: 1
+  save: True
+  save_path: ./output/chiral/testing
+  property: top_score
+  batch_size: 96
+  seed: 2021
+
+data:
+  block_dir: /data/people/kabeywar/datasets/chiral/docking
+
+model:
+  name: chiral_finetune_true_dist3
+  hidden_dim: 128
+  attention: true
+  n_layers: 7
+  max_atom_type: 100
+  charge_power: 2
+  cutoff: 5.0
+  no_edge_types: False
+  layernorm: False
+  order: 3
+  collate: False
+  
+  
+  
+  

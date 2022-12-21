@@ -14,7 +14,12 @@ import numpy as np
 import pickle as pkl
 from torch_geometric.utils import to_dense_adj, dense_to_sparse
 from torch_sparse import coalesce
-from data.md17 import MD17, get_mean_std, get_dataloaders, MD22
+from data.md17 import MD17, get_mean_std, get_dataloaders, MD22, get_distributed_dataloaders
+
+from torch.utils.data.distributed import DistributedSampler
+from torch.nn.parallel import DistributedDataParallel
+import torch.distributed as dist
+import torch.multiprocessing as mp
 
 
 parser = argparse.ArgumentParser(description='MD17 Example')
@@ -32,10 +37,21 @@ parser.add_argument('--num_train',type=int, default=9500, metavar='N',
                     help='Number of training data points')
 parser.add_argument('--batch_size',type=int, default=28, metavar='N',
                     help='Batch size')
+parser.add_argument('--local_rank', type=int, default=0)
 args = parser.parse_args()
 
 device = torch.device("cuda")
 dtype = torch.float32
+
+mp.set_sharing_strategy('file_system')
+
+world_size = torch.cuda.device_count()
+print('Let\'s use', world_size, 'GPUs!')
+if world_size > 1:
+    # os.environ['MASTER_ADDR'] = 'localhost'
+    # os.environ["MASTER_PORT"] = "29500"
+    dist.init_process_group('nccl', rank=args.local_rank, world_size=world_size)
+# print(f'Was dist initialized: {torch.distributed.is_initialized()}')
 
 with open(args.config_path, 'r') as f:
     config = yaml.safe_load(f)
@@ -159,8 +175,13 @@ def pre_transform(data_ori):
 
 dataset.transform = pre_transform
 
-dataloaders = get_dataloaders(dataset, num_train = config.data.num_train, num_val = config.data.num_val, num_workers = config.train.num_workers, batch_size = config.train.batch_size,\
-                test_batch_size = config.test.test_batch_size, idx_dir = config.data.base_path)
+if world_size > 1:
+    dataloaders = get_distributed_dataloaders(dataset, num_train = config.data.num_train, num_val = config.data.num_val, num_workers = config.train.num_workers, batch_size = config.train.batch_size,\
+                test_batch_size = config.test.test_batch_size, idx_dir = config.data.base_path, world_size=world_size, rank=args.local_rank)
+else:
+    dataloaders = get_dataloaders(dataset, num_train = config.data.num_train, num_val = config.data.num_val, num_workers = config.train.num_workers, batch_size = config.train.batch_size,\
+                    test_batch_size = config.test.test_batch_size, idx_dir = config.data.base_path)
+
 mean, std = get_mean_std(dataloaders)
 print(mean, std)
 
