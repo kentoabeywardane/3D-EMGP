@@ -1,6 +1,8 @@
 # Energy-Motivated Equivariant Pretraining for 3D Molecular Graphs
 
-Code for Energy-Motivated Equivariant Pretraining for 3D Molecular Graphs (3D-EMGP).
+I am using this forked repository to test transfer learning capabilities of this model.
+
+Code for Energy-Motivated Equivariant Pretraining for 3D Molecular Graphs (3D-EMGP) by Jiao et al. 2022. 
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/jiaor17/3D-EMGP/blob/main/LICENSE)   [**[Paper]**](https://arxiv.org/pdf/2207.08824.pdf)
 
